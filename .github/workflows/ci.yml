@@ -1,61 +1,37 @@
-# Имя нашего рабочего процесса. Оно будет отображаться на вкладке "Actions" в GitHub.
-name: CI Pipeline - Build and Push Docker Image
-
-# --- Секция "Триггер" ---
-# Здесь мы описываем, КОГДА нужно запускать этот процесс.
+name: CI/CD - Build, Push and Deploy
 on:
-  # Запускать при событии "push" (когда кто-то делает git push)
   push:
-    # Но не всегда, а только если push был сделан в ветку "main"
     branches: [ "main" ]
-
-# --- Секция "Задачи" (Jobs) ---
-# Здесь мы описываем, ЧТО нужно делать.
-# Рабочий процесс может состоять из одной или нескольких задач.
 jobs:
-  # Мы создаем одну задачу и даем ей имя "build_and_push".
-  # Имя может быть любым (например, build-and-publish-image).
-  build_and_push:
-    # Указываем, на какой операционной системе должна работать наша задача.
-    # "ubuntu-latest" означает, что GitHub предоставит нам чистую виртуальную
-    # машину с последней версией Ubuntu для выполнения наших команд.
+  build-and-push:
     runs-on: ubuntu-latest
-
-    # --- Секция "Шаги" (Steps) ---
-    # Здесь мы описываем последовательность действий, которые нужно выполнить в рамках задачи.
     steps:
-      # ШАГ 1: Скачивание нашего кода
-      # Название шага (для логов).
-      - name: Checkout code
-        # "uses" означает, что мы используем готовый, чужой экшен (кусок кода).
-        # "actions/checkout@v3" - это официальный экшен от GitHub,
-        # который скачивает код из нашего репозитория на виртуальную машину.
+      - name: Checkout repository code
         uses: actions/checkout@v3
-
-      # ШАГ 2: Вход в Docker Hub
-      - name: Login to Docker Hub
-        # Используем другой готовый экшен, специально для логина в Docker.
+      - name: Log in to Docker Hub
         uses: docker/login-action@v2
-        # "with" передает параметры в этот экшен.
         with:
-          # В качестве имени пользователя мы передаем значение нашего секрета.
-          # Синтаксис ${{ ... }} - это способ получить доступ к переменным и секретам.
           username: ${{ secrets.DOCKERHUB_USERNAME }}
-          # В качестве пароля - наш токен.
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      # ШАГ 3: Сборка и отправка Docker-образа
       - name: Build and push Docker image
-        # Используем третий готовый экшен, который умеет и собирать, и пушить образы.
         uses: docker/build-push-action@v5
         with:
-          # "context: ." - это как точка в команде "docker build ."
-          # Говорит, что Dockerfile и файлы для сборки лежат в корневой папке.
           context: .
-          # "push: true" - говорим экшену, что после успешной сборки
-          # образ нужно отправить (push) в Docker Hub.
           push: true
-          # "tags: ..." - это как флаг "-t" в команде "docker build".
-          # Мы задаем имя нашему образу. Оно должно быть в формате:
-          # <твой_логин_в_docker_hub>/<имя_образа>:<версия>
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/my-devops-project:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/my-devops-project:latest
+            docker stop my-app || true
+            docker rm my-app || true
+            docker run -d -p 80:5000 --name my-app --restart always ${{ secrets.DOCKERHUB_USERNAME }}/my-devops-project:latest

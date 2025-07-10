@@ -47,7 +47,7 @@ jobs:
       # ШАГ 3: Сборка и отправка Docker-образа
       - name: Build and push Docker image
         # Используем третий готовый экшен, который умеет и собирать, и пушить образы.
-        uses: docker/build-and-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           # "context: ." - это как точка в команде "docker build ."
           # Говорит, что Dockerfile и файлы для сборки лежат в корневой папке.
